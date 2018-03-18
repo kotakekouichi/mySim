@@ -1,0 +1,573 @@
+#include <iostream>
+#include "node.h"
+#include "linkernighan.h"
+#include "params.h"
+#include "minimum_spanning_tree.h"
+
+using namespace std;
+
+namespace OptimizeName
+{
+
+  void Linkernighan::initialize()
+  {
+
+    cout << "initialize " << endl;
+    const int N = Num;
+    double xp, yp;
+
+    nodes = new NodeClass[N];
+
+    int inode = 0;
+    //for(int inode = 0; inode < N; ++inode)
+    while(inode < N)
+    {
+      xp = (double) rand() / RAND_MAX; 
+      yp = (double) rand() / RAND_MAX;
+
+      if(sq(xp - 0.5) + sq(yp - 0.5) < 0.5 * 0.5  && 0.4 * 0.4 < sq(xp - 0.5) + sq(yp - 0.5))
+      {
+	nodes[inode].setNo(inode);
+	nodes[inode].setPosx(xp);
+	nodes[inode].setPosy(yp);
+	nodes[inode].setPassingFlag(false);
+	inode++;
+      }
+    }
+
+    for(int i = 0; i < N; ++i)
+    {
+      for(int j = 0; j < N; ++j)
+      {
+	PathClass tmppath(&nodes[i], &nodes[j]);  
+	pathmap[i][j] = tmppath;
+      }
+    }
+
+    map<double, int> sortedmap;
+    for(int i = 0; i < N; ++i)
+    {
+      sortedmap.clear();
+      for(int j = 0; j < N; ++j)
+      {
+        if(i == j) continue; 
+
+	PathClass tmppath(&nodes[i], &nodes[j]);
+	double dbl = tmppath.getval();
+
+	sortedmap[dbl] = j;
+
+      }
+ 
+      int c = 0;
+
+      map<int, int> tmpmap;
+      for(map<double, int>::iterator ite = sortedmap.begin(); ite != sortedmap.end(); ++ite, ++c)
+      {
+
+	int condidateIdx = ite->second;
+	//map<int, int> tmpmap;
+	tmpmap[condidateIdx] = condidateIdx;
+	//condidatemap[i] = tmpmap;
+
+	if(c == 20) break;
+
+      }
+
+      condidatemap[i] = tmpmap;
+    }
+
+    return;
+  }
+
+
+  void Linkernighan::free()
+  {
+    cout << "free" << endl;
+    delete [] nodes; 
+    bestroute.clear();
+  }
+
+  void Linkernighan::opt()
+  {
+    const int N = Num;
+    cout << "opt" << endl;
+    generationImplementation();
+
+  }
+
+  void Linkernighan::generationImplementation()
+  {
+    int iteration = 0; 
+    const int N = Num;
+    double dist = 0.0;
+
+    MinimumSpanningTree *mst = new MinimumSpanningTree();
+
+    mst->setNodes(nodes);
+    mst->initialize();
+    mst->opt();
+    mst->calc2appRoute();
+
+    vector<PathClass> *route2app = mst->get2appRoute(); 
+
+    NodeClass *route = new NodeClass[N];
+    for(int i = 0; i < route2app->size(); ++i)
+    {
+      PathClass *tmpPath = &(route2app->at(i));
+      route[i] = nodes[tmpPath->getFromNode()->getNo()];
+    }
+
+    //define route
+    for(int inode = 0; inode < N; ++inode) route[inode] = nodes[inode];
+    
+    for(int inode = 0; inode < N; ++inode)
+    {
+      nodes[inode].setPassingFlag(false);
+      route[inode].setPassingFlag(false);
+    }
+
+    //setbestroute(route);
+
+    // ===========
+    NodeClass *forward = new NodeClass[N];
+    NodeClass *back = new NodeClass[N];
+
+    NodeClass *forwardFirst = NULL, *backFirst = NULL;
+    NodeClass *forwardLast = NULL, *backLast = NULL;
+
+    for(int inode = 0; inode < N; ++inode)
+    {
+      forward[inode] = route[inode];    
+      back[inode] = route[N - 1 - inode];
+    }
+
+    forwardFirst = &forward[0];
+    forwardFirst->setPreNode(NULL);
+    for(int inode = 1; inode < N; ++inode)
+    {
+      forwardFirst->setNextNode(&forward[inode]);
+      forwardFirst->getNextNode()->setPreNode(forwardFirst);
+      forwardFirst = forwardFirst->getNextNode();
+      forwardFirst->setNextNode(NULL);
+    }
+    forwardFirst = &forward[0];
+    forwardLast = &forward[N - 1]; 
+
+    backFirst = &back[0];
+    backFirst->setPreNode(NULL);
+    for(int inode = 1; inode < N; ++inode)
+    {
+      backFirst->setNextNode(&back[inode]);
+      backFirst->getNextNode()->setPreNode(backFirst);
+      backFirst = backFirst->getNextNode();
+      backFirst->setNextNode(NULL);
+    }
+    backFirst = &back[0];
+    backLast = &back[N - 1];
+
+    setbestroute2(forwardFirst);
+    // =============
+
+    //distmin = mst->get2appDistMin();
+    distmin = 0.0;
+    
+    for(int i = 0; i < N; ++i)
+    {
+      int fromIdx = i;
+      int toIdx = i != N - 1 ? i + 1 : 0;
+      int inode = route[fromIdx].getNo();
+      int jnode = route[toIdx].getNo();
+      PathClass tmppath(&nodes[inode], &nodes[jnode]);
+
+      distmin += tmppath.getval();
+    }
+
+    clock_t time = clock();
+    map<int, int> indexmap;
+    
+    while( iteration < N )
+    {
+      dist = distmin;
+      double dist1 = dist;
+
+      indexmap.clear();
+      for(int i = 0; i < N; ++i)
+      {
+	route[i].setPassingFlag(false);
+	indexmap[route[i].getNo()] = i;
+      }
+
+      double g = 0;
+      //improvePath(1, dist, dist, g, forwardFirst, forwardLast, backFirst, backLast, route);
+      improvePath(1, dist, dist1, g, route, indexmap);
+
+      if(dist < distmin) 
+      {
+	distmin = dist;
+	cout << "distmin = " << distmin << endl;
+	outputRoute();
+
+	for(int i = 0; i < bestroute.size(); ++i)
+	{
+	  PathClass *tmpPath = &(bestroute.at(i));
+	  route[i] = nodes[tmpPath->getFromNode()->getNo()];
+	}
+	iteration = 0;
+      } else
+      {
+	++iteration;
+      }
+
+      NodeClass firstNode = route[0];
+      for(int i = 0; i < N - 1; ++i)
+      {
+	route[i] = route[i + 1];
+      }
+      route[N - 1] = firstNode;
+       
+      forwardLast->setNextNode(forwardFirst);
+      forwardFirst->setPreNode(forwardLast);
+      
+      forwardLast = forwardFirst;
+      forwardFirst = forwardFirst->getNextNode();
+
+      forwardFirst->setPreNode(NULL);
+      forwardLast->setNextNode(NULL);
+
+      backLast->setNextNode(backFirst);
+      backFirst->setPreNode(backLast);
+      backFirst = backLast;
+      backLast = backLast->getPreNode();
+      
+      backFirst->setPreNode(NULL);
+      backLast->setNextNode(NULL);
+
+
+    }
+
+    time = clock() - time;
+    
+    outputNode();
+    outputRoute();
+
+    //delete [] nodes;
+    mst->free();
+    delete mst;
+    delete [] route;
+
+    cout << (double) time / CLOCKS_PER_SEC << endl;
+  }
+
+//  int Linkernighan::improvePath(int lambda, double &dist, double distRoute, double &g, NodeClass *&forwardFirst, NodeClass *&forwardLast, NodeClass *&backFirst, NodeClass *&backLast, NodeClass *route)
+
+  int Linkernighan::improvePath(int lambda, double &dist, double distRoute, double &g, NodeClass *route, map<int, int> &indexmap)
+  {
+
+    // dist: dist of best route
+    // distRoute : dist of now route
+    int rval = 0;
+    const int N = Num;
+    const int alpha = 4;
+    const int endnode = N - 1;
+    double g2 = 0.0, tmpdist = 0.0;
+    
+    NodeClass *oldroute = new NodeClass[N];
+    NodeClass *pforward = &route[endnode];
+
+    for(int i = 0; i < N; ++i) oldroute[i] = route[i];
+
+    if(lambda < alpha)
+    {
+      for(map<int, int>::iterator ite = condidatemap[pforward->getNo()].begin(); 
+	  ite  != condidatemap[pforward->getNo()].end(); ++ite)
+      {
+	int path = indexmap[ite->first];
+	if(route[path].getPassingFlag()) continue;
+	if((route[path].getPassingFlag() || condidatemap[route[path].getNo()].find(pforward->getNo()) == condidatemap[route[path].getNo()].end() ) && 
+	condidatemap[route[path].getNo()].find(route[path +1].getNo()) != condidatemap[route[path].getNo()].end()) continue;
+
+	PathClass wxy(&route[path], &route[path + 1]);
+	PathClass wex(&route[endnode], &route[path]);
+	g2 = wxy.getval() - wex.getval(); 
+	
+	if(g + g2 > 0.0)
+	{
+	  PathClass wes(&route[endnode], &route[0]);
+	  PathClass wys(&route[path + 1], &route[0]);
+	  
+	  tmpdist = distRoute - wxy.getval() + wex.getval() - wes.getval() + wys.getval();
+
+	  if(tmpdist < dist && fabs(tmpdist - dist) > 1.0e-10)
+	  {
+	    for(int ipath = path + 1; ipath < N; ++ipath)
+	      oldroute[ipath] = route[endnode - ipath + path + 1];
+	    //for(int ipath = path + 1; ipath < N; ++ipath)
+	      //route[ipath] = oldroute[ipath]; 
+
+	    setbestroute(oldroute);
+	    //setbestroute2(forwardFirst);
+	    
+	    dist = tmpdist;
+
+	    g = g + g2;
+
+	    rval = 1;
+
+	    goto CLEANUP;
+
+	  } else 
+	  {
+
+	    vector<nodeClass> nodevec; node
+
+	    for(int ipath = path + 1; ipath < N; ++ipath)
+	      oldroute[ipath] = route[endnode - ipath + path + 1];
+	    
+	    oldroute[path].setPassingFlag(true);
+
+	    g = g + g2;
+
+	    //rval = improvePath(lambda + 1,  dist, tmpdist, g, forwardFirst, pbackpre, pforwardnext, backLast, oldroute);
+
+	    for(int ipath = path + 1; ipath < N; ++ipath)
+	      indexmap[oldroute[ipath].getNo()] = ipath;
+	    
+	    rval = improvePath(lambda + 1, dist, tmpdist, g, oldroute, indexmap);
+
+	    oldroute[path].setPassingFlag(false);
+	    route[path].setPassingFlag(true);
+	    
+	    if(rval) 
+	    {
+	      goto CLEANUP;
+	    } else
+	    {
+	      for(int ipath = path + 1; ipath < N; ++ipath)
+		oldroute[ipath] = route[ipath];
+	      for(int ipath = path + 1; ipath < N; ++ipath)
+	        indexmap[route[ipath].getNo()] = ipath;
+	    }
+	  }
+	} //if g
+      }
+    } else 
+    {
+
+      int idxpath = -1;
+      double dbl = -1.0e+10;
+      for(map<int, int>::iterator ite = condidatemap[pforward->getNo()].begin(); 
+	  ite  != condidatemap[pforward->getNo()].end(); ++ite)
+      {
+	int path = indexmap[ite->first];
+
+	if(route[path].getPassingFlag()) continue;
+	if(route[path].getPassingFlag() && condidatemap[route[path].getPassingFlag()].find(pforward->getNo()) == condidatemap[pforward->getNo()].end()) continue;
+
+	PathClass wxy(&route[path], &route[path + 1]);
+	PathClass wex(&route[endnode], &route[path]);
+	g2 = wxy.getval() - wex.getval(); 
+
+	if(g2 > dbl)
+	{
+	  dbl = g2;
+	  idxpath = path;
+	}
+      }
+
+      if(dbl > 0 && idxpath >= 0)
+      {
+	
+	tmpdist = 0;
+	PathClass wes(&route[endnode], &route[0]);
+	PathClass wys(&route[idxpath + 1], &route[0]);
+
+	tmpdist = distRoute - dbl - wes.getval() + wys.getval();
+
+	if(tmpdist < dist && fabs(tmpdist - dist) > 1.0e-10)
+	{
+	  //for(int ipath = 0; ipath <= idxpath; ++ipath)
+	    //oldroute[ipath] = route[ipath];
+	  for(int ipath = idxpath + 1; ipath < N; ++ipath)
+	    oldroute[ipath] = route[endnode - ipath + idxpath + 1];
+	  //for(int ipath = idxpath + 1; ipath < N; ++ipath)
+	  //  route[ipath] = oldroute[ipath]; 
+
+	  dist = tmpdist;
+	  rval = 1;
+
+	  setbestroute(oldroute);
+	  //setbestroute2(forwardFirst);
+	  
+	  g = g  + dbl;
+	  
+	  goto CLEANUP;
+	} else 
+	{
+	  //for(int ipath = 0; ipath < idxpath + 1; ++ipath)
+	    //oldroute[ipath] = route[ipath];
+	  for(int ipath = idxpath + 1; ipath < N; ++ipath)
+	    oldroute[ipath] = route[endnode - ipath + idxpath + 1];
+
+	  for(int ipath = idxpath + 1; ipath < N; ++ipath)
+	    indexmap[oldroute[ipath].getNo()] = ipath;
+	  
+	  oldroute[idxpath].setPassingFlag(true);
+	  g = g + dbl;
+	  rval = improvePath(lambda + 1, dist, tmpdist, g, oldroute, indexmap);
+
+	  for(int ipath = idxpath + 1; ipath < N; ++ipath)
+	  {
+	    indexmap[route[ipath].getNo()] = ipath;
+	    route[ipath] = route[ipath];
+	  }
+
+	  if(rval)
+	  {
+	  }else
+	  {
+	  }
+
+	  oldroute[idxpath].setPassingFlag(false);
+	  {
+ 	    goto CLEANUP;	    
+	  }
+
+	}
+      }
+    }
+
+CLEANUP:
+
+
+    delete [] oldroute;
+
+    return rval;
+  }
+
+  void Linkernighan::outputNode()
+  {
+    const int N = Num;
+    NodeClass* Nodes = getnodes();
+    ofstream nodefile("nodes.dat");
+
+    for(int i = 0; i < N; ++i)
+      nodefile << Nodes[i].getPosx() << "\t" << Nodes[i].getPosy() << endl;
+
+    nodefile.close();
+    return;
+  }
+
+  void Linkernighan::outputRoute()
+  {
+    ofstream ofile("route2.gnu");
+
+    ofile << "#!/bin/gnuplot" << endl;
+    ofile << "set size square" << endl;
+    ofile << "set xrange [0.0:1.0]" << endl;
+    ofile << "set yrange [0.0:1.0]" << endl;
+    ofile << "plot '-' w l,  'nodes.dat' w d " << endl;
+
+    for(int i = 0; i < bestroute.size(); ++i)
+    {
+      PathClass *tmpPath = &(bestroute[i]);
+
+      ofile << tmpPath->getFromNode()->getPosx() << " " << tmpPath->getFromNode()->getPosy() << endl;
+      ofile << tmpPath->getToNode()->getPosx() << " " << tmpPath->getToNode()->getPosy() << endl;
+
+      ofile << endl;
+
+    }
+
+    ofile.close();
+
+  }
+
+  void Linkernighan::setbestroute(NodeClass *route)
+  {
+    //cout << "set best route"<< endl;
+    const int N = Num;
+    
+    bestroute.clear();
+    double dist = 0.0;
+    for(int i = 0; i < N; ++i)
+    {
+      int fromIdx = i;
+      int toIdx = i != N - 1 ? i + 1 : 0;
+      //PathClass tmppath(&route[fromIdx], &route[toIdx]); 
+      int inode = route[fromIdx].getNo();
+      int jnode = route[toIdx].getNo();
+      PathClass tmppath(&nodes[inode], &nodes[jnode]);
+
+      dist += tmppath.getval();
+      bestroute.push_back(tmppath);
+    }
+    cout << "testdist = " << dist << endl;
+    return;
+  }
+
+  void Linkernighan::setbestroute2(NodeClass *pforward)
+  {
+    const int N = Num;
+
+    bestroute2.clear();
+    double dist = 0.0;
+
+    for(NodeClass *tmpNode = pforward; tmpNode != NULL; tmpNode = tmpNode->getNextNode())
+    {
+      int inode = tmpNode->getNo();
+      int jnode = tmpNode->getNextNode() != NULL ? tmpNode->getNextNode()->getNo() : pforward->getNo();    
+      PathClass tmppath(&nodes[inode], &nodes[jnode]);
+
+      dist += tmppath.getval();
+      bestroute2.push_back(tmppath);
+    }
+
+    cout << "TEST DISS " << dist << endl;
+    //getchar();
+
+    return;
+  }
+
+  int Linkernighan::improvePath_r2(int lambda, double &dist, double distRoute, double &g, vector<int> &optid, NodeClass *firstnode, NodeClass *lastnode)
+  {
+    // dist: dist of best route
+    // distRoute : dist of now route
+    int rval = 0;
+    const int N = Num;
+    const int alpha = 4;
+    const int endnode = lastnode->getNo() - 1;
+    double g2 = 0.0, tmpdist = 0.0;
+ 
+    map<int, int> candidateID = condidatemap[endnode];
+    //for(map<int ,int>>
+/*
+    for(map<int, int>::iterator ite = candidateID.begin(); ite != candidateID.end(); ++ite)
+    {
+ 
+      int id = ite=　
+	PathClass wxy(pforward, pforward->getNextNode());
+	PathClass wex(forwardLast, pforward);
+	g2 = wxy.getval() - wex.getval(); 
+
+	g2 = 
+
+	if(g + g2 > 0.0)
+	{
+	  PathClass wes(forwardLast, forwardFirst);
+	  PathClass wys(pforward->getNextNode(), forwardFirst);
+	  
+	  tmpdist = distRoute - wxy.getval() + wex.getval() - wes.getval() + wys.getval();
+
+	  if(tmpdist < dist && fabs(tmpdist - dist) > 1.0e-10)
+	  {
+
+           
+    }
+    
+    return rval;
+    
+    */
+    return rval;
+  }
+};
