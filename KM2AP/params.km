@@ -1,0 +1,20 @@
+#periodic = 1
+#cosmological = 1
+dim = 3
+Ndm = 32768 
+#Ndm = 262144
+#Ndm = 16777216
+#Ngas = 13824
+#Ngrid = 24
+Ngas = 32768
+Ngrid = 32
+#selfgravity = 1
+#dmfile = dark_matter_particle.25Mpc_32
+#gasfile = gas_particle.25Mpc_32
+NPMGRID = 32
+OmegaLambda = 0.6875
+OmegaMatter = 0.3175
+OmegaCDM = 0.3175
+OmegaBaryon = 0.0
+Hubble0 = 67.11
+

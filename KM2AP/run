@@ -1,0 +1,15 @@
+#!/bin/bash
+
+#make 
+
+#./EXE params.km
+
+cd output
+
+for i in `seq 5 $1`
+do
+  gnuplot voronoi$i.gnu
+done
+#open ???.png 
+
+cd ../
